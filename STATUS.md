@@ -2,6 +2,44 @@
 
 **갱신:** 2026-07-07
 
+## GitHub (집 ↔ 사무실)
+
+| 항목 | 값 |
+|------|-----|
+| 저장소 | https://github.com/myungjupark-cloud/faith-mindmap |
+| 로컬 경로 (집) | `C:\Projects\faith-mindmap` |
+| 기본 브랜치 | `master` |
+
+### 사무실 PC — 방법 1: Git 클론 (권장)
+
+```bat
+cd C:\Projects
+git clone https://github.com/myungjupark-cloud/faith-mindmap.git
+cd faith-mindmap
+copy config.example.json config.local.json
+serve.bat
+```
+
+작업 후 동기화:
+
+```bat
+git pull
+REM ... 작업 ...
+git add -A
+git commit -m "작업 내용 요약"
+git push
+```
+
+### 사무실 PC — 방법 2: 크롬 원격 데스크톱
+
+집 PC(`C:\Projects\faith-mindmap`)에 원격 접속해 그대로 작업해도 됩니다.  
+Ollama·`search.db`·`config.local.json`이 집 PC에만 있으면 AI/RAG는 이 방식이 더 간단합니다.
+
+### thegospel.kr 배포본
+
+`thegospel-kr` 저장소의 `faith-mindmap/` 폴더에도 동일 내용이 있습니다.  
+공개 사이트 배포는 `deploy-thegospel-ftp.py` 사용.
+
 ## 개요
 
 「믿음 여정」 계층형 마인드맵 PWA. 사용자는 설명을 읽고 ▼ 버튼으로 다음 단계만 펼치며 탐색하고, 운영자는 전체 구조 트리·편집·AI 초안을 사용합니다.
