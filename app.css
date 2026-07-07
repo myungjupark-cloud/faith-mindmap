@@ -810,13 +810,10 @@ body.is-resizing-admin::after {
   margin: 0;
   padding: 0;
   border: none;
-  appearance: none;
-  -webkit-appearance: none;
   background: rgba(15, 31, 56, 0.55);
   cursor: col-resize;
   touch-action: none;
   z-index: 80;
-  pointer-events: auto;
 }
 
 .admin-editor-resizer::before {
@@ -842,19 +839,6 @@ body.is-resizing-admin::after {
   width: 6px;
   background: rgba(232, 197, 71, 0.9);
   box-shadow: 0 0 14px rgba(232, 197, 71, 0.45);
-}
-
-.admin-resize-shield {
-  position: fixed;
-  inset: 0;
-  z-index: 79;
-  cursor: col-resize;
-  background: transparent;
-  touch-action: none;
-}
-
-.admin-resize-shield[hidden] {
-  display: none !important;
 }
 
 #edit-desc {
@@ -930,6 +914,15 @@ body.is-resizing-admin::after {
 .admin-move-btn {
   width: 100%;
   margin-top: 0.15rem;
+}
+
+.admin-reorder-actions {
+  display: flex;
+  gap: 0.45rem;
+}
+
+.admin-reorder-actions .btn {
+  flex: 1;
 }
 
 select.admin-input {

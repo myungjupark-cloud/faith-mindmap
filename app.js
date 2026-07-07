@@ -42,7 +42,6 @@
     adminToolbar: $("admin-toolbar"),
     adminEditor: $("admin-editor"),
     adminEditorResizer: $("admin-editor-resizer"),
-    adminResizeShield: $("admin-resize-shield"),
     editTitle: $("edit-title"),
     editDesc: $("edit-desc"),
     editScripture: $("edit-scripture"),
@@ -57,6 +56,9 @@
     editParent: $("edit-parent"),
     editMoveMode: $("edit-move-mode"),
     btnMoveParent: $("btn-move-parent"),
+    reorderRow: $("reorder-row"),
+    btnMoveUp: $("btn-move-up"),
+    btnMoveDown: $("btn-move-down"),
     btnAddChild: $("btn-add-child"),
     btnDeleteNode: $("btn-delete-node"),
     btnSave: $("btn-save"),
@@ -320,6 +322,71 @@
     return true;
   }
 
+  function siblingEdgeIndices(parentId) {
+    var indices = [];
+    state.data.edges.forEach(function (e, i) {
+      if (e.from === parentId && e.type !== "cross") indices.push(i);
+    });
+    return indices;
+  }
+
+  function moveSiblingOrder(nodeId, direction) {
+    if (!state.data || !nodeId || nodeId === state.data.rootId) return false;
+    var parentId = parentOf(nodeId);
+    if (!parentId) return false;
+    var indices = siblingEdgeIndices(parentId);
+    if (indices.length < 2) return false;
+    var pos = -1;
+    indices.forEach(function (edgeIndex, i) {
+      if (state.data.edges[edgeIndex].to === nodeId) pos = i;
+    });
+    if (pos < 0) return false;
+    var targetPos = pos + direction;
+    if (targetPos < 0 || targetPos >= indices.length) return false;
+    var a = indices[pos];
+    var b = indices[targetPos];
+    var tmp = state.data.edges[a];
+    state.data.edges[a] = state.data.edges[b];
+    state.data.edges[b] = tmp;
+    return true;
+  }
+
+  function fillReorderEditor(nodeId) {
+    if (!els.reorderRow) return;
+    if (!nodeId || nodeId === state.data.rootId) {
+      els.reorderRow.hidden = true;
+      return;
+    }
+    var parentId = parentOf(nodeId);
+    var siblings = childrenOf(parentId);
+    if (siblings.length < 2) {
+      els.reorderRow.hidden = true;
+      return;
+    }
+    els.reorderRow.hidden = false;
+    var pos = siblings.findIndex(function (n) { return n.id === nodeId; });
+    if (els.btnMoveUp) els.btnMoveUp.disabled = pos <= 0;
+    if (els.btnMoveDown) els.btnMoveDown.disabled = pos >= siblings.length - 1;
+  }
+
+  function applyReorder(direction) {
+    var nodeId = getEditNodeId();
+    if (!nodeId || nodeId === state.data.rootId) {
+      toast("홈 노드는 순서를 바꿀 수 없습니다");
+      return;
+    }
+    applyEditor();
+    if (!moveSiblingOrder(nodeId, direction)) {
+      toast(direction < 0 ? "더 위로 옮길 수 없습니다" : "더 아래로 옮길 수 없습니다");
+      fillReorderEditor(nodeId);
+      return;
+    }
+    renderFocus("static");
+    fillMoveEditor(nodeId);
+    fillReorderEditor(nodeId);
+    toast(direction < 0 ? "한 칸 위로 옮겼습니다 — 저장하세요" : "한 칸 아래로 옮겼습니다 — 저장하세요");
+  }
+
   var MOVE_NONE = "__none__";
 
   function fillMoveEditor(nodeId) {
@@ -370,6 +437,7 @@
       state.adminEditId = nodeId;
     }
     fillMoveEditor(nodeId);
+    fillReorderEditor(nodeId);
     renderFocus("static");
     var parentLabel = newParentId === state.data.rootId
       ? "1단계"
@@ -805,6 +873,7 @@
     els.editDesc.value = node.description || "";
     els.editScripture.value = node.scripture || "";
     fillMoveEditor(node.id);
+    fillReorderEditor(node.id);
     fillAiDraft(node);
   }
 
@@ -844,114 +913,78 @@
     if (els.btnAiAppend) els.btnAiAppend.disabled = !enabled;
   }
 
-  var ADMIN_WIDTH_KEY = "faith-mindmap-admin-width";
-  var ADMIN_WIDTH_MIN = 280;
-  var ADMIN_MAIN_MIN = 120;
-  var ADMIN_RESIZER_WIDTH = 24;
+  var ADMIN_PANEL_KEY = "faith-mindmap-admin-width";
+  var ADMIN_PANEL_DEFAULT = 520;
+  var ADMIN_PANEL_MIN = 280;
+  var ADMIN_PANEL_GUTTER = 144;
 
-  function adminEditorMaxWidth() {
-    return Math.max(ADMIN_WIDTH_MIN, window.innerWidth - ADMIN_MAIN_MIN - ADMIN_RESIZER_WIDTH);
+  function clampAdminPanelWidth(width) {
+    var max = Math.max(ADMIN_PANEL_MIN, window.innerWidth - ADMIN_PANEL_GUTTER);
+    return Math.min(Math.max(width, ADMIN_PANEL_MIN), max);
   }
 
-  function getAdminEditorPreferredWidth() {
-    var raw = getComputedStyle(document.documentElement).getPropertyValue("--admin-editor-width");
-    var preferred = parseInt(raw, 10);
-    return isNaN(preferred) ? 520 : preferred;
-  }
-
-  function setAdminEditorWidth(width) {
-    var w = clampAdminEditorWidth(width);
+  function applyAdminPanelWidth(width) {
+    var w = clampAdminPanelWidth(width);
     document.documentElement.style.setProperty("--admin-editor-width", w + "px");
     return w;
   }
 
-  function syncAdminEditorWidth() {
-    setAdminEditorWidth(getAdminEditorPreferredWidth());
+  function readAdminPanelWidth() {
+    var raw = getComputedStyle(document.documentElement).getPropertyValue("--admin-editor-width");
+    var w = parseInt(raw, 10);
+    return isNaN(w) ? ADMIN_PANEL_DEFAULT : w;
   }
 
-  function getAdminEditorWidth() {
-    if (els.adminEditor) return els.adminEditor.getBoundingClientRect().width;
-    return clampAdminEditorWidth(getAdminEditorPreferredWidth());
-  }
+  function initAdminPanelResize() {
+    var resizer = document.getElementById("admin-editor-resizer");
+    if (!resizer) return;
 
-  function clampAdminEditorWidth(width) {
-    return Math.min(Math.max(width, ADMIN_WIDTH_MIN), adminEditorMaxWidth());
-  }
+    var stored = parseInt(localStorage.getItem(ADMIN_PANEL_KEY) || "", 10);
+    if (!isNaN(stored)) applyAdminPanelWidth(stored);
 
-  function loadAdminEditorWidth() {
-    var stored = parseInt(localStorage.getItem(ADMIN_WIDTH_KEY) || "", 10);
-    if (!isNaN(stored)) {
-      if (stored === 360) stored = 520;
-      setAdminEditorWidth(stored);
-    }
-  }
-
-  function bindAdminEditorResize() {
-    if (!els.adminEditorResizer || !els.adminEditor) return;
-    loadAdminEditorWidth();
-    window.addEventListener("resize", syncAdminEditorWidth);
-
-    function endResize() {
-      els.adminEditorResizer.classList.remove("is-dragging");
-      document.body.classList.remove("is-resizing-admin");
-      if (els.adminResizeShield) els.adminResizeShield.setAttribute("hidden", "");
-      localStorage.setItem(ADMIN_WIDTH_KEY, String(getAdminEditorPreferredWidth()));
-      document.removeEventListener("mousemove", onResizeMove);
-      document.removeEventListener("mouseup", onResizeEnd);
-      window.removeEventListener("mouseup", onResizeEnd);
-      document.removeEventListener("touchmove", onResizeTouchMove);
-      document.removeEventListener("touchend", onResizeEnd);
-    }
-
-    var resizeStartX = 0;
-    var resizeStartW = 0;
-
-    function onResizeMove(e) {
-      e.preventDefault();
-      setAdminEditorWidth(resizeStartW + (e.clientX - resizeStartX));
-    }
-
-    function onResizeTouchMove(e) {
-      if (!e.touches || !e.touches.length) return;
-      e.preventDefault();
-      setAdminEditorWidth(resizeStartW + (e.touches[0].clientX - resizeStartX));
-    }
-
-    function onResizeEnd() {
-      endResize();
-    }
-
-    function beginResize(clientX) {
-      if (window.innerWidth <= 600) return;
-      resizeStartX = clientX;
-      resizeStartW = getAdminEditorWidth();
-      els.adminEditorResizer.classList.add("is-dragging");
-      document.body.classList.add("is-resizing-admin");
-      if (els.adminResizeShield) els.adminResizeShield.removeAttribute("hidden");
-      document.addEventListener("mousemove", onResizeMove);
-      document.addEventListener("mouseup", onResizeEnd);
-      window.addEventListener("mouseup", onResizeEnd);
-      document.addEventListener("touchmove", onResizeTouchMove, { passive: false });
-      document.addEventListener("touchend", onResizeEnd);
-    }
-
-    els.adminEditorResizer.addEventListener("mousedown", function (e) {
-      if (e.button !== 0) return;
-      e.preventDefault();
-      e.stopPropagation();
-      beginResize(e.clientX);
+    window.addEventListener("resize", function () {
+      applyAdminPanelWidth(readAdminPanelWidth());
     });
 
-    els.adminEditorResizer.addEventListener("touchstart", function (e) {
-      if (window.innerWidth <= 600) return;
-      if (!e.touches || !e.touches.length) return;
-      e.preventDefault();
-      beginResize(e.touches[0].clientX);
-    }, { passive: false });
+    var startX = 0;
+    var startW = ADMIN_PANEL_DEFAULT;
+    var dragging = false;
 
-    els.adminEditorResizer.addEventListener("dblclick", function () {
-      setAdminEditorWidth(520);
-      localStorage.setItem(ADMIN_WIDTH_KEY, "520");
+    function stopDrag(e) {
+      if (!dragging || (e && e.pointerId !== resizer._pointerId)) return;
+      dragging = false;
+      resizer._pointerId = null;
+      resizer.classList.remove("is-dragging");
+      document.body.classList.remove("is-resizing-admin");
+      try { resizer.releasePointerCapture(e.pointerId); } catch (err) {}
+      localStorage.setItem(ADMIN_PANEL_KEY, String(readAdminPanelWidth()));
+    }
+
+    resizer.addEventListener("pointerdown", function (e) {
+      if (window.innerWidth <= 600) return;
+      if (e.pointerType === "mouse" && e.button !== 0) return;
+      e.preventDefault();
+      dragging = true;
+      startX = e.clientX;
+      startW = readAdminPanelWidth();
+      resizer._pointerId = e.pointerId;
+      resizer.classList.add("is-dragging");
+      document.body.classList.add("is-resizing-admin");
+      resizer.setPointerCapture(e.pointerId);
+    });
+
+    resizer.addEventListener("pointermove", function (e) {
+      if (!dragging || e.pointerId !== resizer._pointerId) return;
+      e.preventDefault();
+      applyAdminPanelWidth(startW + (e.clientX - startX));
+    });
+
+    resizer.addEventListener("pointerup", stopDrag);
+    resizer.addEventListener("pointercancel", stopDrag);
+
+    resizer.addEventListener("dblclick", function () {
+      applyAdminPanelWidth(ADMIN_PANEL_DEFAULT);
+      localStorage.setItem(ADMIN_PANEL_KEY, String(ADMIN_PANEL_DEFAULT));
       toast("편집 패널 폭을 기본값으로 복원했습니다");
     });
   }
@@ -1045,7 +1078,7 @@
       setPanelVisible(els.adminToolbar, true);
       setPanelVisible(els.adminEditor, true);
       setPanelVisible(els.adminEditorResizer, true);
-      syncAdminEditorWidth();
+      applyAdminPanelWidth(readAdminPanelWidth());
       els.appMain.classList.add("is-admin");
       els.btnAdmin.textContent = "운영중";
       els.btnAdmin.setAttribute("aria-pressed", "true");
@@ -1389,6 +1422,8 @@
     els.btnAddChild.addEventListener("click", addChild);
     els.btnDeleteNode.addEventListener("click", deleteNode);
     if (els.btnMoveParent) els.btnMoveParent.addEventListener("click", applyMoveParent);
+    if (els.btnMoveUp) els.btnMoveUp.addEventListener("click", function () { applyReorder(-1); });
+    if (els.btnMoveDown) els.btnMoveDown.addEventListener("click", function () { applyReorder(1); });
     if (els.btnAiAsk) els.btnAiAsk.addEventListener("click", askLocalAi);
     if (els.btnAiInsert) els.btnAiInsert.addEventListener("click", function () { insertAiAnswer("replace"); });
     if (els.btnAiAppend) els.btnAiAppend.addEventListener("click", function () { insertAiAnswer("append"); });
@@ -1418,7 +1453,7 @@
       swReloading = true;
       window.location.reload();
     });
-    navigator.serviceWorker.register("sw.js?v=41", { updateViaCache: "none" })
+    navigator.serviceWorker.register("sw.js?v=42", { updateViaCache: "none" })
       .then(function (reg) {
         if (reg.waiting) reg.waiting.postMessage({ type: "SKIP_WAITING" });
         reg.update();
@@ -1426,7 +1461,7 @@
       .catch(function () {});
   }
 
+  initAdminPanelResize();
   bindEvents();
-  bindAdminEditorResize();
   loadMindmap();
 })();

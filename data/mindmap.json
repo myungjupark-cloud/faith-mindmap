@@ -3,7 +3,7 @@
   "rootId": "root",
   "meta": {
     "title": "믿음 여정 마인드맵",
-    "updatedAt": "2026-07-06T23:38:21.681199+09:00"
+    "updatedAt": "2026-07-07T10:39:38.193155+09:00"
   },
   "nodes": [
     {
@@ -32,7 +32,7 @@
     },
     {
       "id": "nmr8p43yio4fs",
-      "title": "천국",
+      "title": "천국은 있는가?",
       "description": "",
       "scripture": "",
       "x": 0,
@@ -117,9 +117,23 @@
       "scripture": "",
       "x": 0,
       "y": 0
+    },
+    {
+      "id": "nmr9z3eujmi8q",
+      "title": "성경책은 믿을만한가?",
+      "description": "",
+      "scripture": "",
+      "x": 0,
+      "y": 0
     }
   ],
   "edges": [
+    {
+      "id": "enmr9z3eujmi8q",
+      "from": "root",
+      "to": "nmr9z3eujmi8q",
+      "type": "hierarchy"
+    },
     {
       "id": "enmr93e7bexjoq",
       "from": "root",
@@ -127,15 +141,9 @@
       "type": "hierarchy"
     },
     {
-      "id": "eroot-l1-faith",
+      "id": "eorphan-nmr8n8stfatwf",
       "from": "root",
-      "to": "l1-faith",
-      "type": "hierarchy"
-    },
-    {
-      "id": "enmr94dqrqbpor",
-      "from": "root",
-      "to": "nmr94dqrqbpor",
+      "to": "nmr8n8stfatwf",
       "type": "hierarchy"
     },
     {
@@ -181,9 +189,15 @@
       "type": "hierarchy"
     },
     {
-      "id": "eorphan-nmr8n8stfatwf",
+      "id": "eroot-l1-faith",
       "from": "root",
-      "to": "nmr8n8stfatwf",
+      "to": "l1-faith",
+      "type": "hierarchy"
+    },
+    {
+      "id": "enmr94dqrqbpor",
+      "from": "root",
+      "to": "nmr94dqrqbpor",
       "type": "hierarchy"
     },
     {
