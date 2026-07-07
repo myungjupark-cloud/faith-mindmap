@@ -1,0 +1,21 @@
+{
+  "id": "kr.thegospel.faith-mindmap",
+  "name": "믿음 여정 마인드맵",
+  "short_name": "믿음여정",
+  "description": "믿음이란 무엇인가? — 질문과 답을 따라가는 마인드맵",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#0a1628",
+  "theme_color": "#0a1628",
+  "orientation": "any",
+  "lang": "ko",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

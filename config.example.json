@@ -1,0 +1,14 @@
+{
+  "adminPin": "4464572",
+  "ollama": {
+    "baseUrl": "http://127.0.0.1:11434",
+    "model": "gemma4:12b",
+    "numPredict": 4096,
+    "numCtx": 16384
+  },
+  "gemini": {
+    "apiKey": ""
+  },
+  "searchDb": "C:/Projects/bible-qna/search.db",
+  "voyage_key": ""
+}
