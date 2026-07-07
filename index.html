@@ -12,7 +12,7 @@
   <meta name="mobile-web-app-capable" content="yes">
   <link rel="apple-touch-icon" href="icon.svg">
   <link rel="icon" href="icon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="app.css?v=42">
+  <link rel="stylesheet" href="app.css?v=45">
   <style>
     [hidden] { display: none !important; }
     .admin-overlay:not([hidden]) {
@@ -133,9 +133,29 @@
 
   <div id="admin-editor-resizer" class="admin-editor-resizer" hidden role="separator" aria-orientation="vertical" aria-label="노드 편집 패널 폭 조절" title="좌우 폭 조절 — 드래그 (더블클릭: 기본 폭)"></div>
 
+  <div id="font-size-chip" class="sizechip" role="group" aria-label="글자 크기">
+    <button type="button" id="fs-down" class="sm" aria-label="글자 작게">가–</button>
+    <span class="sep" aria-hidden="true"></span>
+    <button type="button" id="fs-up" class="lg" aria-label="글자 크게">가＋</button>
+  </div>
+
+  <footer class="app-version-foot" aria-label="앱 버전">
+    <button type="button" id="app-ver-btn" class="app-ver-btn">Ver. · 업데이트 내역</button>
+  </footer>
+
+  <div id="app-update-modal" class="app-update-modal" hidden>
+    <div class="app-update-modal__backdrop" data-close aria-hidden="true"></div>
+    <div class="app-update-modal__panel" role="dialog" aria-modal="true" aria-label="업데이트 내역">
+      <button type="button" class="app-update-modal__close" data-close aria-label="닫기">×</button>
+      <h2 class="app-update-modal__title">업데이트 내역</h2>
+      <ul id="app-changelog" class="app-changelog"></ul>
+    </div>
+  </div>
+
   <div id="toast" class="toast" hidden></div>
 
   <script src="markdown.js?v=21"></script>
-  <script src="app.js?v=43"></script>
+  <script src="version.js?v=45"></script>
+  <script src="app.js?v=45"></script>
 </body>
 </html>

@@ -10,6 +10,7 @@
   --danger: #c45c5c;
   --radius: 12px;
   --font: "Pretendard", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+  --fs: 1;
   --admin-editor-width: 520px;
   --admin-main-min: 120px;
   --admin-resizer-width: 24px;
@@ -23,6 +24,7 @@ html, body {
   margin: 0;
   height: 100%;
   font-family: var(--font);
+  font-size: calc(16px * var(--fs));
   color: var(--text);
   background: radial-gradient(ellipse 120% 80% at 50% 15%, #152a45 0%, var(--bg) 55%);
   overflow: hidden;
@@ -91,7 +93,7 @@ body.is-resizing-admin::after {
   height: 100%;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
-  padding: 0.5rem 1rem 5rem;
+  padding: 0.5rem 1rem 5.5rem;
 }
 
 .focus-back {
@@ -941,6 +943,185 @@ select.admin-input {
   font-size: 0.85rem;
   z-index: 200;
   animation: fadeUp 0.2s ease;
+}
+
+.sizechip {
+  position: fixed;
+  left: max(1rem, env(safe-area-inset-left, 0px));
+  bottom: calc(1.25rem + env(safe-area-inset-bottom, 0px));
+  z-index: 55;
+  display: flex;
+  background: rgba(15, 31, 56, 0.96);
+  border: 1px solid rgba(126, 184, 218, 0.25);
+  border-radius: 999px;
+  overflow: hidden;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+}
+
+.sizechip button {
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: var(--accent-soft);
+  font-family: inherit;
+  padding: 0.55rem 0.85rem;
+  line-height: 1;
+}
+
+.sizechip button:active {
+  background: rgba(232, 197, 71, 0.12);
+  color: var(--accent);
+}
+
+.sizechip .sep {
+  width: 1px;
+  background: rgba(126, 184, 218, 0.2);
+}
+
+.sizechip .sm { font-size: 0.8rem; }
+.sizechip .lg { font-size: 1.1rem; }
+
+body.has-admin-toolbar .sizechip {
+  bottom: calc(4.25rem + env(safe-area-inset-bottom, 0px));
+}
+
+.app-version-foot {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: calc(0.4rem + env(safe-area-inset-bottom, 0px));
+  z-index: 45;
+  text-align: center;
+  pointer-events: none;
+}
+
+body.has-admin-toolbar .app-version-foot {
+  bottom: calc(3.2rem + env(safe-area-inset-bottom, 0px));
+}
+
+.app-ver-btn {
+  pointer-events: auto;
+  appearance: none;
+  -webkit-appearance: none;
+  background: none;
+  border: 1px solid var(--accent-dim);
+  border-radius: 999px;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 0.72rem;
+  letter-spacing: 0.03em;
+  padding: 0.3rem 0.75rem;
+  cursor: pointer;
+  transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+}
+
+.app-ver-btn:hover,
+.app-ver-btn:focus-visible {
+  background: rgba(232, 197, 71, 0.12);
+  border-color: var(--accent);
+  color: var(--accent);
+  outline: none;
+}
+
+.app-update-modal[hidden] {
+  display: none !important;
+}
+
+.app-update-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.25rem;
+}
+
+.app-update-modal__backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(8, 16, 26, 0.65);
+  backdrop-filter: blur(2px);
+}
+
+.app-update-modal__panel {
+  position: relative;
+  width: 100%;
+  max-width: 420px;
+  max-height: 80vh;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  background: var(--bg-panel);
+  border: 1px solid rgba(126, 184, 218, 0.25);
+  border-radius: var(--radius);
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.45);
+  padding: 1.35rem 1.15rem 1.15rem;
+}
+
+.app-update-modal__close {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.65rem;
+  background: none;
+  border: 0;
+  cursor: pointer;
+  color: var(--accent-soft);
+  font-size: 1.5rem;
+  line-height: 1;
+  padding: 0.15rem 0.35rem;
+}
+
+.app-update-modal__title {
+  margin: 0 0 1rem;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--accent);
+  text-align: center;
+}
+
+.app-changelog {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.app-changelog__item {
+  padding: 0 0 0.9rem;
+}
+
+.app-changelog__item + .app-changelog__item {
+  border-top: 1px solid rgba(126, 184, 218, 0.15);
+  padding-top: 0.9rem;
+}
+
+.app-changelog__head {
+  display: flex;
+  align-items: baseline;
+  gap: 0.55rem;
+  margin-bottom: 0.4rem;
+}
+
+.app-changelog__ver {
+  font-weight: 600;
+  color: var(--accent-soft);
+  font-size: 0.9rem;
+}
+
+.app-changelog__date {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.app-changelog__notes {
+  margin: 0;
+  padding-left: 1.1rem;
+}
+
+.app-changelog__notes li {
+  font-size: 0.84rem;
+  line-height: 1.65;
+  color: var(--text);
+  word-break: keep-all;
 }
 
 @keyframes fadeUp {

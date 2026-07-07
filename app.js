@@ -989,6 +989,28 @@
     });
   }
 
+  function initFontSize() {
+    var KEY = "faith-mindmap-fs";
+    var fs = 1;
+    try {
+      var sv = localStorage.getItem(KEY);
+      if (sv) fs = parseFloat(sv);
+    } catch (e) {}
+    if (isNaN(fs)) fs = 1;
+
+    function applyFs() {
+      fs = Math.min(1.4, Math.max(0.85, fs));
+      document.documentElement.style.setProperty("--fs", fs.toFixed(2));
+      try { localStorage.setItem(KEY, String(fs)); } catch (e) {}
+    }
+
+    applyFs();
+    var up = document.getElementById("fs-up");
+    var down = document.getElementById("fs-down");
+    if (up) up.addEventListener("click", function () { fs += 0.1; applyFs(); });
+    if (down) down.addEventListener("click", function () { fs -= 0.1; applyFs(); });
+  }
+
   function askLocalAi() {
     if (!els.aiQuestion || !els.btnAiAsk) return;
     var question = els.aiQuestion.value.trim();
@@ -1080,6 +1102,7 @@
       setPanelVisible(els.adminEditorResizer, true);
       applyAdminPanelWidth(readAdminPanelWidth());
       els.appMain.classList.add("is-admin");
+      document.body.classList.add("has-admin-toolbar");
       els.btnAdmin.textContent = "운영중";
       els.btnAdmin.setAttribute("aria-pressed", "true");
       fillEditor(node);
@@ -1102,6 +1125,7 @@
     setPanelVisible(els.adminEditor, false);
     setPanelVisible(els.adminEditorResizer, false);
     els.appMain.classList.remove("is-admin");
+    document.body.classList.remove("has-admin-toolbar");
     els.btnAdmin.textContent = "운영";
     els.btnAdmin.setAttribute("aria-pressed", "false");
     applyEditor();
@@ -1453,14 +1477,21 @@
       swReloading = true;
       window.location.reload();
     });
-    navigator.serviceWorker.register("sw.js?v=42", { updateViaCache: "none" })
+    navigator.serviceWorker.register("sw.js?v=45", { updateViaCache: "none" })
       .then(function (reg) {
         if (reg.waiting) reg.waiting.postMessage({ type: "SKIP_WAITING" });
         reg.update();
       })
       .catch(function () {});
+    document.addEventListener("visibilitychange", function () {
+      if (document.hidden) return;
+      navigator.serviceWorker.getRegistration().then(function (reg) {
+        if (reg) reg.update();
+      });
+    });
   }
 
+  initFontSize();
   initAdminPanelResize();
   bindEvents();
   loadMindmap();

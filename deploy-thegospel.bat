@@ -11,6 +11,7 @@ copy /Y "%SRC%sw.js" "%DST%\"
 copy /Y "%SRC%manifest.json" "%DST%\"
 copy /Y "%SRC%icon.svg" "%DST%\"
 copy /Y "%SRC%markdown.js" "%DST%\"
+copy /Y "%SRC%version.js" "%DST%\"
 copy /Y "%SRC%data\mindmap.json" "%DST%\data\"
 copy /Y "%SRC%.htaccess" "%DST%\"
 echo.

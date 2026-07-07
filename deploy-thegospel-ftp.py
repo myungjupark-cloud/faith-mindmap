@@ -22,6 +22,7 @@ FILES = [
     "manifest.json",
     "icon.svg",
     "markdown.js",
+    "version.js",
     "data/mindmap.json",
 ]
 
