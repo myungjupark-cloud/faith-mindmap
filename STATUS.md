@@ -49,6 +49,7 @@ Ollama·`search.db`·`config.local.json`이 집 PC에만 있으면 AI/RAG는 이
 | 환경 | URL | 비고 |
 |------|-----|------|
 | 로컬 | `http://localhost:8770/` | `serve.bat` → `api.py` |
+| 외출 운영 | Tailscale IP 또는 Tunnel HTTPS | `REMOTE-ACCESS.md` · `setup-tailscale.bat` |
 | 공개 | https://thegospel.kr/faith-mindmap/ | FTP 정적 배포 (`deploy-thegospel-ftp.py`) |
 
 ## 주요 기능 (완료)
@@ -59,14 +60,16 @@ Ollama·`search.db`·`config.local.json`이 집 PC에만 있으면 AI/RAG는 이
 - 마크다운 설명(소제목·표·굵게)
 - 로컬 AI + RAG (`bible-qna/search.db`, Ollama, Voyage 임베딩)
 - 검색 실패 시 모델 지식 경고, `[N]`·관련 근거 표 제거
-- 폰 LAN 접속·저장 (`allow-phone.bat`)
-- PWA 캐시 v41
+- 폰 LAN·외출(Tailscale/Tunnel) 접속·저장 (`REMOTE-ACCESS.md`)
+- PWA 캐시 v46
 
 ## 로컬 실행
 
 ```bat
-serve.bat          REM PC + API
-allow-phone.bat    REM Wi-Fi IP 허용 (선택)
+serve.bat              REM PC + API
+setup-tailscale.bat    REM 외출 접속 1회 설정
+start-cloudflare-tunnel.bat  REM HTTPS Tunnel (선택)
+allow-phone.bat        REM Wi-Fi IP 허용 (선택)
 ```
 
 설정: `config.local.json` (Git 제외) — PIN, AI 키 등

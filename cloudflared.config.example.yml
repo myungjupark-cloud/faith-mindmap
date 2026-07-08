@@ -1,0 +1,13 @@
+# Cloudflare Tunnel — faith-mindmap
+# 1. cloudflared tunnel login
+# 2. cloudflared tunnel create faith-mindmap
+# 3. cloudflared tunnel route dns faith-mindmap faith-edit.YOUR_DOMAIN
+# 4. 이 파일을 config.cloudflared.yml 로 복사 후 tunnel ID·hostname 수정
+
+tunnel: YOUR_TUNNEL_ID
+credentials-file: C:\Users\YOUR_USER\.cloudflared\YOUR_TUNNEL_ID.json
+
+ingress:
+  - hostname: faith-edit.YOUR_DOMAIN
+    service: http://localhost:8770
+  - service: http_status:404

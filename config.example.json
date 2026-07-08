@@ -1,5 +1,12 @@
 {
   "adminPin": "4464572",
+  "remoteAccess": {
+    "publicUrl": "",
+    "autoDeployOnSave": true,
+    "corsOrigins": [
+      "https://thegospel.kr"
+    ]
+  },
   "ollama": {
     "baseUrl": "http://127.0.0.1:11434",
     "model": "gemma4:12b",

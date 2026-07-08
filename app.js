@@ -1,7 +1,11 @@
 (function () {
   "use strict";
 
-  var SKIP_ADMIN_PIN = true;
+  function isLocalDevHost() {
+    return /^(localhost|127\.0\.0\.1)$/.test(location.hostname);
+  }
+
+  var SKIP_ADMIN_PIN = isLocalDevHost();
 
   var state = {
     data: null,
@@ -11,6 +15,8 @@
     admin: false,
     adminEditId: null
   };
+
+  var saveInFlight = false;
 
   var $ = function (id) { return document.getElementById(id); };
 
@@ -46,8 +52,11 @@
     editDesc: $("edit-desc"),
     editScripture: $("edit-scripture"),
     aiQuestion: $("ai-question"),
+    aiAskMode: $("ai-ask-mode"),
+    aiModeHint: $("ai-mode-hint"),
     aiAnswer: $("ai-answer"),
     aiAnswerPreview: $("ai-answer-preview"),
+    aiAnswerMeta: $("ai-answer-meta"),
     btnAiAsk: $("btn-ai-ask"),
     btnAiInsert: $("btn-ai-insert"),
     btnAiAppend: $("btn-ai-append"),
@@ -351,22 +360,111 @@
     return true;
   }
 
+  function moveChildEdgeToIndex(parentId, childId, targetIndex) {
+    var indices = siblingEdgeIndices(parentId);
+    if (!indices.length || targetIndex < 0 || targetIndex >= indices.length) return;
+    var fromPos = -1;
+    indices.forEach(function (edgeIndex, i) {
+      if (state.data.edges[edgeIndex].to === childId) fromPos = i;
+    });
+    if (fromPos < 0 || fromPos === targetIndex) return;
+    var edgeRef = indices[fromPos];
+    var edge = state.data.edges[edgeRef];
+    state.data.edges.splice(edgeRef, 1);
+    var indicesAfter = siblingEdgeIndices(parentId);
+    var insertBefore = indicesAfter[targetIndex];
+    if (insertBefore === undefined) {
+      state.data.edges.push(edge);
+    } else {
+      state.data.edges.splice(insertBefore, 0, edge);
+    }
+  }
+
+  function swapChainUp(nodeId) {
+    var parentId = parentOf(nodeId);
+    if (!parentId || parentId === state.data.rootId) return false;
+    var grandparentId = parentOf(parentId);
+    if (!grandparentId || grandparentId === state.data.rootId) return false;
+    var gpChildIndices = siblingEdgeIndices(grandparentId);
+    var parentPos = -1;
+    gpChildIndices.forEach(function (edgeIndex, i) {
+      if (state.data.edges[edgeIndex].to === parentId) parentPos = i;
+    });
+    if (parentPos < 0) return false;
+    var nodeKidIds = childrenOf(nodeId).map(function (n) { return n.id; });
+    setNodeParent(nodeId, grandparentId);
+    setNodeParent(parentId, nodeId);
+    nodeKidIds.forEach(function (kidId) {
+      setNodeParent(kidId, parentId);
+    });
+    moveChildEdgeToIndex(grandparentId, nodeId, parentPos);
+    return true;
+  }
+
+  function swapChainDown(nodeId) {
+    var kids = childrenOf(nodeId);
+    if (kids.length !== 1) return false;
+    var childId = kids[0].id;
+    var parentId = parentOf(nodeId);
+    if (!parentId) return false;
+    var siblingIndices = siblingEdgeIndices(parentId);
+    var nodePos = -1;
+    siblingIndices.forEach(function (edgeIndex, i) {
+      if (state.data.edges[edgeIndex].to === nodeId) nodePos = i;
+    });
+    if (nodePos < 0) return false;
+    var childKidIds = childrenOf(childId).map(function (n) { return n.id; });
+    setNodeParent(childId, parentId);
+    setNodeParent(nodeId, childId);
+    childKidIds.forEach(function (kidId) {
+      setNodeParent(kidId, nodeId);
+    });
+    moveChildEdgeToIndex(parentId, childId, nodePos);
+    return true;
+  }
+
+  function reorderCanMoveUp(nodeId) {
+    if (!nodeId || nodeId === state.data.rootId) return false;
+    var parentId = parentOf(nodeId);
+    if (!parentId) return false;
+    var siblings = childrenOf(parentId);
+    if (siblings.length >= 2) {
+      return siblings.findIndex(function (n) { return n.id === nodeId; }) > 0;
+    }
+    var grandparentId = parentOf(parentId);
+    return !!grandparentId && grandparentId !== state.data.rootId;
+  }
+
+  function reorderCanMoveDown(nodeId) {
+    if (!nodeId || nodeId === state.data.rootId) return false;
+    var parentId = parentOf(nodeId);
+    if (!parentId) return false;
+    var siblings = childrenOf(parentId);
+    if (siblings.length >= 2) {
+      var pos = siblings.findIndex(function (n) { return n.id === nodeId; });
+      return pos >= 0 && pos < siblings.length - 1;
+    }
+    return childrenOf(nodeId).length === 1;
+  }
+
+  function applyNodeReorder(nodeId, direction) {
+    if (direction < 0) {
+      if (moveSiblingOrder(nodeId, -1)) return true;
+      return swapChainUp(nodeId);
+    }
+    if (moveSiblingOrder(nodeId, 1)) return true;
+    return swapChainDown(nodeId);
+  }
+
   function fillReorderEditor(nodeId) {
     if (!els.reorderRow) return;
     if (!nodeId || nodeId === state.data.rootId) {
       els.reorderRow.hidden = true;
       return;
     }
-    var parentId = parentOf(nodeId);
-    var siblings = childrenOf(parentId);
-    if (siblings.length < 2) {
-      els.reorderRow.hidden = true;
-      return;
-    }
     els.reorderRow.hidden = false;
-    var pos = siblings.findIndex(function (n) { return n.id === nodeId; });
-    if (els.btnMoveUp) els.btnMoveUp.disabled = pos <= 0;
-    if (els.btnMoveDown) els.btnMoveDown.disabled = pos >= siblings.length - 1;
+    if (els.btnMoveUp) els.btnMoveUp.disabled = !reorderCanMoveUp(nodeId);
+    if (els.btnMoveDown) els.btnMoveDown.disabled = !reorderCanMoveDown(nodeId);
   }
 
   function applyReorder(direction) {
@@ -376,10 +474,13 @@
       return;
     }
     applyEditor();
-    if (!moveSiblingOrder(nodeId, direction)) {
+    if (!applyNodeReorder(nodeId, direction)) {
       toast(direction < 0 ? "더 위로 옮길 수 없습니다" : "더 아래로 옮길 수 없습니다");
       fillReorderEditor(nodeId);
       return;
+    }
+    if (state.centerId === nodeId) {
+      state.explored = buildExploredPath(nodeId);
     }
     renderFocus("static");
     fillMoveEditor(nodeId);
@@ -709,6 +810,16 @@
     els.focusTrail.hidden = false;
   }
 
+  function shouldSkipFocusDescRender() {
+    return state.admin && getEditNodeId() === state.centerId;
+  }
+
+  function renderAdminEditingDescHint() {
+    if (!els.focusDesc) return;
+    els.focusDesc.className = "focus-desc is-admin-editing";
+    els.focusDesc.textContent = "설명은 편집 패널에서 수정 중입니다.";
+  }
+
   function renderFocus(viewMode) {
     if (!state.data || !state.centerId) return;
     var node = nodeById(state.centerId);
@@ -728,7 +839,11 @@
 
     if (staticView) {
       setPlainText(els.focusTitle, title, "focus-title");
-      renderDescription(els.focusDesc, desc, false, 0);
+      if (shouldSkipFocusDescRender()) {
+        renderAdminEditingDescHint();
+      } else {
+        renderDescription(els.focusDesc, desc, false, 0);
+      }
       setPlainText(els.focusScripture, scripture, "focus-scripture");
       els.focusCard.classList.remove("is-revealing");
       els.expandWrap.classList.remove("is-revealing");
@@ -811,6 +926,7 @@
 
   function openNode(id, pushTrail, viewMode) {
     if (!nodeById(id)) return;
+    if (state.admin) syncEditorToState();
     if (id === state.data.rootId) {
       state.explored = [state.data.rootId];
     } else if (pushTrail !== false) {
@@ -831,6 +947,7 @@
 
   function goBack() {
     if (state.explored.length <= 1) return;
+    if (state.admin) syncEditorToState();
     state.explored.pop();
     state.centerId = state.explored[state.explored.length - 1];
     state.adminEditId = null;
@@ -841,6 +958,7 @@
 
   function resetView() {
     if (!state.data) return;
+    if (state.admin) syncEditorToState();
     state.explored = [state.data.rootId];
     state.centerId = state.data.rootId;
     state.adminEditId = null;
@@ -1011,6 +1129,79 @@
     if (down) down.addEventListener("click", function () { fs -= 0.1; applyFs(); });
   }
 
+  var AI_MODE_KEY = "faith-mindmap-ai-mode";
+
+  function getAiAskMode() {
+    if (!els.aiAskMode) return "rag";
+    var picked = els.aiAskMode.querySelector('input[name="ai-ask-mode"]:checked');
+    return picked && picked.value === "model" ? "model" : "rag";
+  }
+
+  function setAiAskMode(mode) {
+    if (!els.aiAskMode) return;
+    var val = mode === "model" ? "model" : "rag";
+    var input = els.aiAskMode.querySelector('input[name="ai-ask-mode"][value="' + val + '"]');
+    if (input) input.checked = true;
+    updateAiModeHint();
+  }
+
+  function updateAiModeHint() {
+    if (!els.aiModeHint) return;
+    if (getAiAskMode() === "model") {
+      els.aiModeHint.textContent = "search.db 없이 Ollama 모델 지식만으로 답합니다. 실패하면 RAG로 넘기지 않고 오류만 표시합니다.";
+    } else {
+      els.aiModeHint.textContent = "search.db에서 자료를 찾아 Ollama가 답합니다. 자료가 없거나 실패하면 로컬 AI로 넘기지 않고 오류만 표시합니다.";
+    }
+  }
+
+  function initAiAskMode() {
+    try {
+      var saved = localStorage.getItem(AI_MODE_KEY);
+      if (saved === "model" || saved === "rag") setAiAskMode(saved);
+    } catch (e) { /* ignore */ }
+    if (!els.aiAskMode) return;
+    els.aiAskMode.addEventListener("change", function () {
+      try { localStorage.setItem(AI_MODE_KEY, getAiAskMode()); } catch (e) { /* ignore */ }
+      updateAiModeHint();
+    });
+    updateAiModeHint();
+  }
+
+  function setAiAnswerError(message, askMode) {
+    if (!els.aiAnswerMeta) return;
+    els.aiAnswerMeta.classList.remove("is-model", "is-rag");
+    els.aiAnswerMeta.classList.add("is-error");
+    els.aiAnswerMeta.textContent = message || "질문 실패";
+    els.aiAnswerMeta.hidden = false;
+  }
+
+  function setAiAnswerMeta(data, askMode) {
+    if (!els.aiAnswerMeta) return;
+    var rag = (data && data.rag) || {};
+    var resolved = (data && data.askMode) || askMode || "rag";
+    var text = "";
+    els.aiAnswerMeta.classList.remove("is-model", "is-rag", "is-error");
+    if (resolved === "model") {
+      els.aiAnswerMeta.classList.add("is-model");
+      text = "응답 방식: 로컬 AI만 (search.db 미사용)";
+    } else if (rag.sourceCount > 0) {
+      els.aiAnswerMeta.classList.add("is-rag");
+      text = "응답 방식: RAG — search.db 자료 " + rag.sourceCount + "건 반영";
+    } else {
+      els.aiAnswerMeta.classList.add("is-rag");
+      text = "응답 방식: RAG — search.db 자료 " + rag.sourceCount + "건 반영";
+    }
+    els.aiAnswerMeta.textContent = text;
+    els.aiAnswerMeta.hidden = false;
+  }
+
+  function clearAiAnswerMeta() {
+    if (!els.aiAnswerMeta) return;
+    els.aiAnswerMeta.hidden = true;
+    els.aiAnswerMeta.textContent = "";
+    els.aiAnswerMeta.classList.remove("is-model", "is-rag", "is-error");
+  }
+
   function askLocalAi() {
     if (!els.aiQuestion || !els.btnAiAsk) return;
     var question = els.aiQuestion.value.trim();
@@ -1020,29 +1211,35 @@
     }
     var node = getEditNode();
     var context = node ? nodePathLabel(node.id) : "";
+    var askMode = getAiAskMode();
     els.btnAiAsk.disabled = true;
     els.btnAiAsk.textContent = "생성 중…";
+    clearAiAnswerMeta();
     fetch("/api/ai/ask", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ question: question, context: context })
+      body: JSON.stringify({ question: question, context: context, mode: askMode })
     })
       .then(function (res) { return res.json().then(function (data) { return { ok: res.ok, data: data }; }); })
       .then(function (result) {
         if (!result.data || !result.data.ok) {
-          throw new Error((result.data && result.data.error) || "AI 응답 실패");
+          var failMsg = (result.data && result.data.error) || "AI 응답 실패";
+          setAiAnswerError(failMsg, askMode);
+          throw new Error(failMsg);
         }
         if (els.aiAnswer) els.aiAnswer.value = result.data.answer || "";
         setAiAnswerActions(!!(result.data.answer || "").trim());
         renderAiPreview();
+        setAiAnswerMeta(result.data, askMode);
         var rag = result.data.rag || {};
+        var resolved = result.data.askMode || askMode;
         var ragMsg = "답변을 받았습니다";
-        if (rag.sourceCount > 0) {
-          ragMsg += " (search.db 자료 " + rag.sourceCount + "건)";
-        } else if (rag.mode === "no_db") {
-          ragMsg += " (search.db 없음 — 모델 지식만 사용)";
-        } else if (rag.mode === "empty") {
-          ragMsg += " (관련 자료 없음 — 모델 지식만 사용)";
+        if (resolved === "model") {
+          ragMsg += " (로컬 AI만)";
+        } else if (rag.sourceCount > 0) {
+          ragMsg += " (search.db " + rag.sourceCount + "건)";
+        } else {
+          ragMsg += " (RAG 검색 없음)";
         }
         ragMsg += " — 설명에 넣기를 누르세요";
         toast(ragMsg);
@@ -1050,6 +1247,9 @@
       .catch(function (err) {
         if (els.aiAnswer) els.aiAnswer.value = "";
         setAiAnswerActions(false);
+        if (!els.aiAnswerMeta || els.aiAnswerMeta.hidden) {
+          setAiAnswerError(err.message || "AI 질문 실패", askMode);
+        }
         renderAiPreview();
         toast(err.message || "AI 질문 실패");
       })
@@ -1071,8 +1271,12 @@
     } else {
       els.editDesc.value = answer;
     }
-    applyEditor();
-    toast(mode === "append" ? "설명에 추가했습니다" : "설명에 넣었습니다");
+    syncEditorToState();
+    if (els.aiAnswer) els.aiAnswer.value = "";
+    setAiAnswerActions(false);
+    clearAiAnswerMeta();
+    renderAiPreview();
+    toast(mode === "append" ? "설명에 추가했습니다 — 저장을 눌러 반영하세요" : "설명에 넣었습니다 — 저장을 눌러 반영하세요");
   }
 
   function ensureCenterNode() {
@@ -1132,7 +1336,8 @@
     renderFocus("static");
   }
 
-  function applyEditor() {
+  function syncEditorToState() {
+    if (!state.admin || !state.data) return;
     var id = getEditNodeId();
     if (!id) return;
     var node = nodeById(id);
@@ -1140,7 +1345,15 @@
     node.title = els.editTitle.value.trim() || "제목 없음";
     node.description = els.editDesc.value.trim();
     node.scripture = els.editScripture.value.trim();
+  }
+
+  function applyEditor() {
+    syncEditorToState();
     renderFocus("static");
+  }
+
+  function onEditorInput() {
+    syncEditorToState();
   }
 
   function newId() {
@@ -1199,7 +1412,14 @@
   }
 
   function saveMindmap() {
-    applyEditor();
+    if (saveInFlight) return Promise.resolve();
+    saveInFlight = true;
+    if (els.btnSave) {
+      els.btnSave.disabled = true;
+      els.btnSave.textContent = "저장 중…";
+    }
+    syncEditorToState();
+    if (!state.data.meta) state.data.meta = {};
     state.data.meta.updatedAt = new Date().toISOString();
     return fetch("/api/mindmap", {
       method: "POST",
@@ -1208,15 +1428,33 @@
     }).then(function (res) {
       if (!res.ok) throw new Error("save failed");
       return res.json();
-    }).then(function () {
-      toast("저장되었습니다");
+    }).then(function (data) {
+      renderFocus("static");
+      var dep = data && data.deploy;
+      if (dep && dep.ok && dep.async) {
+        toast("저장 완료 — thegospel.kr 배포 진행 중");
+      } else if (dep && dep.ok) {
+        toast("저장 및 thegospel.kr 배포 완료");
+      } else if (dep && dep.skipped) {
+        toast("저장되었습니다 (자동 배포 꺼짐)");
+      } else if (dep && !dep.ok) {
+        toast("저장됨 — 배포 실패: " + (dep.error || "알 수 없음"));
+      } else {
+        toast("저장되었습니다");
+      }
     }).catch(function () {
       toast("저장 실패 — serve.bat(api.py) 실행이 필요합니다");
+    }).finally(function () {
+      saveInFlight = false;
+      if (els.btnSave) {
+        els.btnSave.disabled = false;
+        els.btnSave.textContent = "저장";
+      }
     });
   }
 
   function exportJson() {
-    applyEditor();
+    syncEditorToState();
     var blob = new Blob([JSON.stringify(state.data, null, 2)], { type: "application/json" });
     var a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
@@ -1253,27 +1491,6 @@
     return decodeURIComponent(h.slice(3));
   }
 
-  function loadPinFromConfig() {
-    return fetch("config.local.json?_=" + Date.now())
-      .then(function (res) {
-        if (res.ok) return res.json();
-        return fetch("config.example.json?_=" + Date.now()).then(function (r) {
-          if (!r.ok) throw new Error("no config");
-          return r.json();
-        });
-      })
-      .then(function (cfg) {
-        return String((cfg && cfg.adminPin) || "").trim();
-      })
-      .catch(function () { return ""; });
-  }
-
-  function checkApi() {
-    return fetch("/api/health?_=" + Date.now())
-      .then(function (res) { return res.ok; })
-      .catch(function () { return false; });
-  }
-
   function verifyPin(pin) {
     pin = String(pin || "").trim();
     return fetch("/api/admin/verify", {
@@ -1284,14 +1501,10 @@
       if (!res.ok) throw new Error("bad_status");
       return res.json();
     }).then(function (data) {
-      if (data.ok) return { ok: true, viaApi: true };
+      if (data.ok) return { ok: true };
       return { ok: false, reason: "pin" };
     }).catch(function () {
-      return loadPinFromConfig().then(function (expected) {
-        if (expected && pin === expected) return { ok: true, viaApi: false };
-        if (!expected) return { ok: false, reason: "server" };
-        return { ok: false, reason: "pin" };
-      });
+      return { ok: false, reason: "server" };
     });
   }
 
@@ -1399,7 +1612,13 @@
             toast("데이터 로드 후 다시 시도하세요");
             return;
           }
-          enterAdmin();
+          if (SKIP_ADMIN_PIN) {
+            enterAdmin();
+            return;
+          }
+          els.adminPin.value = "";
+          els.adminOverlay.hidden = false;
+          els.adminPin.focus();
         })
         .catch(function () {
           toast("운영자 모드 진입 오류 — 새로고침 후 다시 시도하세요");
@@ -1421,13 +1640,10 @@
           if (!result) return;
           if (result.ok) {
             enterAdmin();
-            if (!result.viaApi) {
-              toast("입장됨 — 편집 저장은 serve.bat(api.py) 실행이 필요합니다");
-            }
             return;
           }
           if (result.reason === "server") {
-            toast("설정을 읽을 수 없습니다 — serve.bat으로 실행하세요");
+            toast("서버에 연결할 수 없습니다 — serve.bat으로 실행하세요");
             return;
           }
           toast("PIN이 올바르지 않습니다");
@@ -1459,7 +1675,7 @@
       els.importFile.value = "";
     });
     ["editTitle", "editDesc", "editScripture"].forEach(function (id) {
-      $(id).addEventListener("input", applyEditor);
+      $(id).addEventListener("input", onEditorInput);
     });
     window.addEventListener("hashchange", function () {
       var id = parseHash();
@@ -1472,12 +1688,15 @@
 
   if ("serviceWorker" in navigator) {
     var swReloading = false;
+    var swVerMatch = (document.querySelector('script[src*="app.js"]') || {}).src || "";
+    var swVer = (swVerMatch.match(/[?&]v=(\d+)/) || [])[1] || "52";
     navigator.serviceWorker.addEventListener("controllerchange", function () {
       if (swReloading) return;
+      if (saveInFlight) return;
       swReloading = true;
       window.location.reload();
     });
-    navigator.serviceWorker.register("sw.js?v=45", { updateViaCache: "none" })
+    navigator.serviceWorker.register("sw.js?v=" + swVer, { updateViaCache: "none" })
       .then(function (reg) {
         if (reg.waiting) reg.waiting.postMessage({ type: "SKIP_WAITING" });
         reg.update();
@@ -1492,6 +1711,7 @@
   }
 
   initFontSize();
+  initAiAskMode();
   initAdminPanelResize();
   bindEvents();
   loadMindmap();

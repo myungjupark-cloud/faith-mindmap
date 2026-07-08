@@ -18,6 +18,10 @@ import socket
 
 import sqlite3
 
+import subprocess
+
+import threading
+
 import urllib.error
 
 import urllib.request
@@ -31,6 +35,8 @@ from urllib.parse import urlparse
 
 
 from rag_search import search_topic, search_topic_fts_only
+
+from deploy_thegospel import deploy_mindmap_after_save
 
 
 
@@ -277,7 +283,11 @@ def rag_system_prompt() -> str:
 
     return (
 
-        "당신은 회복역·라이프스터디·워치만 니·위트니스 리 등 자료에 정통한 기독교 신앙 조력자입니다. "
+        "깊이 있고 읽기 쉬운 전문. "
+
+        "당신은 회복역·라이프스터디·워치만 니·위트니스 리 등 주님의 회복 자료에 정통하고 깊이 있는 전문가입니다. "
+
+        "질문자의 질문 목적을 잘 이해하고 답하세요. "
 
         "아래 [검색 자료]만 근거로 답하되, 답변 본문에는 출처 번호·각주·인용 표기를 넣지 마세요. "
 
@@ -288,6 +298,34 @@ def rag_system_prompt() -> str:
         "자료에 없는 내용은 추측하지 말고, "
 
         "「제공된 자료에서 명확히 확인되지 않습니다」라고 말하세요. "
+
+        "한국어로 명확하고 따뜻하게 답하세요. "
+
+        "아래 마크다운 형식으로 구체화해 답하세요. "
+
+        "소제목은 ## 💡 제목 또는 ### 제목 형식을 사용하세요. "
+
+        "비교·정리가 필요하면 마크다운 표(| 열1 | 열2 |)를 사용하세요. "
+
+        "목록은 - 항목 형식, 섹션 구분은 --- 한 줄을 사용하세요. "
+
+        "굵게는 꼭 필요할 때만 쓰고, 이모지(💡 ✨ 🙏 📖 등)는 적당히 사용하세요."
+
+    )
+
+
+
+
+
+def model_only_system_prompt() -> str:
+
+    return (
+
+        "당신은 성경과 기독교 신앙에 정통한 조력자입니다. "
+
+        "외부 자료·search.db 없이, 모델이 학습한 성경 이해와 신학 지식만으로 답하세요. "
+
+        "성경 구절을 자연스럽게 인용해도 되나 [1] 같은 번호·각주·「관련 근거」 열은 넣지 마세요. "
 
         "한국어로 명확하고 따뜻하게 답하세요. "
 
@@ -309,25 +347,7 @@ def rag_system_prompt() -> str:
 
 def plain_system_prompt() -> str:
 
-    return (
-
-        "당신은 기독교 신앙 주제를 돕는 조력자입니다. "
-
-        "성경에 기반해 명확하고 따뜻하게 답하세요. 한국어로 답변하세요. "
-
-        "답변에 [1], [2] 같은 출처 번호나 「관련 근거」 열은 넣지 마세요. "
-
-        "아래 마크다운 형식으로 구조화해 답하세요. "
-
-        "소제목은 ## 💡 제목 또는 ### 제목 형식을 사용하세요. "
-
-        "비교·정리가 필요하면 마크다운 표(| 열1 | 열2 |)를 사용하세요. "
-
-        "목록은 - 항목 형식, 섹션 구분은 --- 한 줄을 사용하세요. "
-
-        "**굵게**는 꼭 필요할 때만 쓰고, 이모지(💡 ✨ 🙏 📖 등)는 적당히 사용하세요."
-
-    )
+    return model_only_system_prompt()
 
 
 
@@ -487,13 +507,81 @@ def length_limit_notice() -> str:
 
 
 
-def ask_ollama(question: str, context: str = "", chunks: list[dict] | None = None, rag_mode: str = "") -> dict:
+def rag_preflight_error(rag_mode: str) -> dict:
+
+    if rag_mode == "no_db":
+
+        msg = "RAG 실패 — search.db를 찾을 수 없습니다. 로컬 AI로 전환하지 않았습니다."
+
+    elif rag_mode == "error":
+
+        msg = "RAG 실패 — search.db 검색 중 오류가 발생했습니다. 로컬 AI로 전환하지 않았습니다."
+
+    else:
+
+        msg = "RAG 실패 — search.db에서 관련 자료를 찾지 못했습니다. 로컬 AI로 전환하지 않았습니다."
+
+    return {
+
+        "ok": False,
+
+        "error": msg,
+
+        "askMode": "rag",
+
+        "rag": {"mode": rag_mode, "sourceCount": 0, "sources": []},
+
+    }
+
+
+
+
+
+def ai_fail(ask_mode: str, error: str, rag_mode: str = "", source_count: int = 0) -> dict:
+
+    payload: dict = {"ok": False, "error": error, "askMode": ask_mode}
+
+    if ask_mode == "model":
+
+        payload["rag"] = {"mode": "chosen_model_only", "sourceCount": 0, "sources": []}
+
+    else:
+
+        payload["rag"] = {
+
+            "mode": rag_mode or "failed",
+
+            "sourceCount": source_count,
+
+            "sources": [],
+
+        }
+
+    return payload
+
+
+
+
+
+def ask_ollama(
+
+    question: str,
+
+    context: str = "",
+
+    chunks: list[dict] | None = None,
+
+    rag_mode: str = "",
+
+    ask_mode: str = "rag",
+
+) -> dict:
 
     question = str(question or "").strip()
 
     if not question:
 
-        return {"ok": False, "error": "질문이 비어 있습니다"}
+        return ai_fail(ask_mode, "질문이 비어 있습니다")
 
 
 
@@ -507,9 +595,15 @@ def ask_ollama(question: str, context: str = "", chunks: list[dict] | None = Non
 
     chunks = chunks or []
 
-    use_rag = bool(chunks)
+    is_model = ask_mode == "model" or rag_mode == "chosen_model_only"
 
-    system = rag_system_prompt() if use_rag else plain_system_prompt()
+    if is_model:
+
+        system = model_only_system_prompt()
+
+    else:
+
+        system = rag_system_prompt()
 
 
 
@@ -519,9 +613,15 @@ def ask_ollama(question: str, context: str = "", chunks: list[dict] | None = Non
 
         user_parts.append(f"맥락: {context}")
 
-    if use_rag:
+    if not is_model:
 
-        user_parts.append("=== 검색 자료 ===\n" + build_rag_context(chunks))
+        if chunks:
+
+            user_parts.append("=== 검색 자료 ===\n" + build_rag_context(chunks))
+
+        else:
+
+            return rag_preflight_error(rag_mode or "empty")
 
     user_parts.append(f"질문: {question}")
 
@@ -555,23 +655,47 @@ def ask_ollama(question: str, context: str = "", chunks: list[dict] | None = Non
 
         detail = exc.read().decode("utf-8", errors="replace")
 
-        return {"ok": False, "error": f"Ollama 오류 ({exc.code})", "detail": detail[:300]}
+        return ai_fail(
+
+            ask_mode,
+
+            f"{'로컬 AI' if is_model else 'RAG'} 실패 — Ollama 오류 ({exc.code}). {'RAG' if is_model else '로컬 AI'}로 전환하지 않았습니다.",
+
+            rag_mode=rag_mode,
+
+        )
 
     except urllib.error.URLError as exc:
 
-        return {
+        label = "로컬 AI" if is_model else "RAG"
 
-            "ok": False,
+        other = "RAG" if is_model else "로컬 AI"
 
-            "error": "Ollama에 연결할 수 없습니다 — Ollama가 실행 중인지 확인하세요",
+        return ai_fail(
 
-            "detail": str(exc.reason),
+            ask_mode,
 
-        }
+            f"{label} 실패 — Ollama에 연결할 수 없습니다. {other}로 전환하지 않았습니다.",
+
+            rag_mode=rag_mode,
+
+        )
 
     except TimeoutError:
 
-        return {"ok": False, "error": "응답 시간이 초과되었습니다 — 잠시 후 다시 시도하세요"}
+        label = "로컬 AI" if is_model else "RAG"
+
+        other = "RAG" if is_model else "로컬 AI"
+
+        return ai_fail(
+
+            ask_mode,
+
+            f"{label} 실패 — 응답 시간이 초과되었습니다. {other}로 전환하지 않았습니다.",
+
+            rag_mode=rag_mode,
+
+        )
 
 
 
@@ -581,13 +705,19 @@ def ask_ollama(question: str, context: str = "", chunks: list[dict] | None = Non
 
     if not answer:
 
-        return {"ok": False, "error": "빈 응답이 반환되었습니다"}
+        label = "로컬 AI" if is_model else "RAG"
 
+        other = "RAG" if is_model else "로컬 AI"
 
+        return ai_fail(
 
-    if not use_rag:
+            ask_mode,
 
-        answer = model_only_disclaimer(rag_mode) + answer
+            f"{label} 실패 — 빈 응답이 반환되었습니다. {other}로 전환하지 않았습니다.",
+
+            rag_mode=rag_mode,
+
+        )
 
 
 
@@ -599,9 +729,27 @@ def ask_ollama(question: str, context: str = "", chunks: list[dict] | None = Non
 
 
 
-    result = {"ok": True, "answer": answer, "model": model, "doneReason": done_reason or "stop"}
+    resolved_ask_mode = "model" if is_model else "rag"
 
-    if use_rag:
+    result = {
+
+        "ok": True,
+
+        "answer": answer,
+
+        "model": model,
+
+        "doneReason": done_reason or "stop",
+
+        "askMode": resolved_ask_mode,
+
+    }
+
+    if is_model:
+
+        result["rag"] = {"mode": "chosen_model_only", "sourceCount": 0, "sources": []}
+
+    else:
 
         result["rag"] = {
 
@@ -612,10 +760,6 @@ def ask_ollama(question: str, context: str = "", chunks: list[dict] | None = Non
             "sources": rag_sources(chunks),
 
         }
-
-    else:
-
-        result["rag"] = {"mode": rag_mode or "model_only", "sourceCount": 0, "sources": []}
 
     return result
 
@@ -629,7 +773,115 @@ def ask_with_rag(question: str, context: str = "") -> dict:
 
     chunks, rag_mode = search_rag_chunks(question, context, cfg)
 
+    if not chunks:
+
+        return rag_preflight_error(rag_mode)
+
     return ask_ollama(question, context, chunks=chunks, rag_mode=rag_mode)
+
+
+
+
+
+def ask_ai(question: str, context: str = "", mode: str = "rag") -> dict:
+
+    question = str(question or "").strip()
+
+    if not question:
+
+        resolved = "model" if str(mode or "rag").strip().lower() in ("model", "local", "model_only", "ollama") else "rag"
+
+        return ai_fail(resolved, "질문이 비어 있습니다")
+
+    mode = str(mode or "rag").strip().lower()
+
+    if mode in ("model", "local", "model_only", "ollama"):
+
+        return ask_ollama(question, context, chunks=[], rag_mode="chosen_model_only", ask_mode="model")
+
+    chunks, rag_mode = search_rag_chunks(question, context, load_config())
+
+    if not chunks:
+
+        return rag_preflight_error(rag_mode)
+
+    return ask_ollama(question, context, chunks=chunks, rag_mode=rag_mode, ask_mode="rag")
+
+
+
+
+
+def is_tailscale_ip(ip: str) -> bool:
+
+    parts = ip.split(".")
+
+    if len(parts) != 4:
+
+        return False
+
+    try:
+
+        first, second = int(parts[0]), int(parts[1])
+
+    except ValueError:
+
+        return False
+
+    return first == 100 and 64 <= second <= 127
+
+
+
+
+
+def cors_origins(cfg: dict) -> list[str]:
+
+    remote = cfg.get("remoteAccess") or {}
+
+    origins = remote.get("corsOrigins") or []
+
+    if isinstance(origins, str):
+
+        origins = [origins]
+
+    return [str(o).strip() for o in origins if str(o).strip()]
+
+
+
+
+
+def auto_deploy_on_save(cfg: dict) -> bool:
+
+    remote = cfg.get("remoteAccess") or {}
+
+    if "autoDeployOnSave" in remote:
+
+        return bool(remote.get("autoDeployOnSave"))
+
+    return True
+
+
+
+
+
+def _deploy_mindmap_background() -> None:
+
+    try:
+
+        result = deploy_mindmap_after_save()
+
+        if result.get("ok"):
+
+            files = ", ".join(result.get("files") or [])
+
+            print(f"[deploy] OK thegospel.kr ({files})")
+
+        else:
+
+            print(f"[deploy] failed: {result.get('error')}")
+
+    except Exception as exc:
+
+        print(f"[deploy] error: {exc}")
 
 
 
@@ -643,9 +895,33 @@ class FaithMindmapHandler(SimpleHTTPRequestHandler):
 
 
 
+    def _maybe_send_cors(self) -> None:
+
+        origin = self.headers.get("Origin", "").strip()
+
+        if not origin:
+
+            return
+
+        if origin in cors_origins(load_config()):
+
+            self.send_header("Access-Control-Allow-Origin", origin)
+
+            self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+
+            self.send_header("Access-Control-Allow-Headers", "Content-Type")
+
+            self.send_header("Vary", "Origin")
+
+
+
     def end_headers(self) -> None:
 
         path = urlparse(self.path).path
+
+        if path.startswith("/api/"):
+
+            self._maybe_send_cors()
 
         if path.endswith((".html", ".js", ".css")) or path in ("/", ""):
 
@@ -655,9 +931,31 @@ class FaithMindmapHandler(SimpleHTTPRequestHandler):
 
 
 
+    def do_OPTIONS(self) -> None:
+
+        path = urlparse(self.path).path
+
+        if path.startswith("/api/"):
+
+            self.send_response(204)
+
+            self.end_headers()
+
+            return
+
+        self.send_error(404)
+
+
+
     def do_GET(self) -> None:
 
         path = urlparse(self.path).path
+
+        if path in ("/config.local.json", "/config.local.json/"):
+
+            self.send_error(404)
+
+            return
 
         if path == "/api/health":
 
@@ -733,7 +1031,29 @@ class FaithMindmapHandler(SimpleHTTPRequestHandler):
 
                 f.write("\n")
 
-            send_json(self, 200, {"ok": True, "path": "data/mindmap.json"})
+            payload: dict = {"ok": True, "path": "data/mindmap.json"}
+
+            cfg = load_config()
+
+            if auto_deploy_on_save(cfg):
+
+                threading.Thread(target=_deploy_mindmap_background, daemon=True).start()
+
+                payload["deploy"] = {
+
+                    "ok": True,
+
+                    "async": True,
+
+                    "message": "thegospel.kr 배포 진행 중",
+
+                }
+
+            else:
+
+                payload["deploy"] = {"ok": False, "skipped": True, "reason": "autoDeployOnSave disabled"}
+
+            send_json(self, 200, payload)
 
             return
 
@@ -743,11 +1063,13 @@ class FaithMindmapHandler(SimpleHTTPRequestHandler):
 
             data = read_json_body(self)
 
-            result = ask_with_rag(
+            result = ask_ai(
 
                 str(data.get("question", "")),
 
                 str(data.get("context", "")).strip(),
+
+                str(data.get("mode", "rag")),
 
             )
 
@@ -793,17 +1115,52 @@ def lan_ip_addresses() -> list[str]:
     return ips
 
 
-def print_access_urls(port: int) -> None:
+def tailscale_ip_addresses() -> list[str]:
+    try:
+        out = subprocess.run(
+            ["tailscale", "ip", "-4"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+        )
+        if out.returncode == 0:
+            ips = [line.strip() for line in out.stdout.splitlines() if line.strip()]
+            if ips:
+                return ips
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+    return [ip for ip in lan_ip_addresses() if is_tailscale_ip(ip)]
+
+
+def remote_public_url(cfg: dict) -> str:
+    remote = cfg.get("remoteAccess") or {}
+    return str(remote.get("publicUrl") or "").strip()
+
+
+def print_access_urls(port: int, cfg: dict | None = None) -> None:
+    cfg = cfg or load_config()
     print(f"Faith Mindmap → http://localhost:{port}/")
     print("  같은 Wi-Fi 폰에서 접속:")
-    lan_ips = lan_ip_addresses()
+    lan_ips = [ip for ip in lan_ip_addresses() if not is_tailscale_ip(ip)]
     if lan_ips:
         for ip in lan_ips:
             print(f"    http://{ip}:{port}/")
     else:
         print("    (PC IP를 찾지 못했습니다 — ipconfig 로 IPv4 확인)")
+    ts_ips = tailscale_ip_addresses()
+    print("  외출(LTE) — Tailscale (집 PC 켜진 상태):")
+    if ts_ips:
+        for ip in ts_ips:
+            print(f"    http://{ip}:{port}/")
+    else:
+        print("    Tailscale 미연결 — setup-tailscale.bat 참고")
+    public_url = remote_public_url(cfg)
+    if public_url:
+        print(f"  외출 — Cloudflare Tunnel: {public_url}")
     print("  폰에서 최신 내용: 운영자 저장 후 [새로고침] 버튼")
-    print("  폰 접속 안 되면 allow-phone.bat 을 관리자 권한으로 1회 실행")
+    print("  Wi-Fi 접속 안 되면 allow-phone.bat (관리자 1회)")
+    print("  외출 설정: REMOTE-ACCESS.md · setup-tailscale.bat")
     print("  API: POST /api/admin/verify, POST /api/mindmap, POST /api/ai/ask")
 
 
@@ -817,7 +1174,7 @@ def main() -> None:
 
     server = HTTPServer(("", PORT), FaithMindmapHandler)
 
-    print_access_urls(PORT)
+    print_access_urls(PORT, cfg)
 
     print(f"  RAG: search.db={'OK ' + db_path if db_path else 'missing'}")
 

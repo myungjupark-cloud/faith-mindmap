@@ -1,4 +1,4 @@
-var CACHE = "faith-mindmap-v45";
+var CACHE = "faith-mindmap-v53";
 
 function isShellPath(pathname) {
   if (!pathname || pathname === "/") return true;
