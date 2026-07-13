@@ -22,12 +22,12 @@
 
 html, body {
   margin: 0;
-  height: 100%;
+  min-height: 100%;
   font-family: var(--font);
   font-size: calc(16px * var(--fs));
   color: var(--text);
   background: radial-gradient(ellipse 120% 80% at 50% 15%, #152a45 0%, var(--bg) 55%);
-  overflow: hidden;
+  overflow-x: hidden;
 }
 
 body.is-resizing-admin {
@@ -75,8 +75,7 @@ body.is-resizing-admin::after {
 }
 
 .app-main {
-  height: calc(100% - 48px);
-  overflow: hidden;
+  min-height: calc(100vh - 48px);
   display: flex;
   justify-content: center;
 }
@@ -90,9 +89,6 @@ body.is-resizing-admin::after {
 .focus-app {
   width: 100%;
   max-width: 520px;
-  height: 100%;
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
   padding: 0.5rem 1rem 5.5rem;
 }
 

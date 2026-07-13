@@ -742,11 +742,9 @@
   }
 
   function scrollFocusToTop() {
-    var scroller = document.querySelector(".focus-app");
-    if (!scroller) return;
-    scroller.scrollTop = 0;
+    window.scrollTo(0, 0);
     requestAnimationFrame(function () {
-      scroller.scrollTop = 0;
+      window.scrollTo(0, 0);
     });
   }
 
